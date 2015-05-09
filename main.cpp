@@ -30,6 +30,7 @@ void applyMask( const Mat & grayFrame, const Mat & frame, Mat & result)
 // Funcion para encontrar la sonrisa dentro de la imagen usando una imagen en escala de grises
 Rect EncontrarSonrisa( const Mat & frame )
 {
+
 	uchar minPossibleValue = 50;
 	// Obtener el valor mas "claro" (posible punto de la sonrisa)
 	uchar min = 0;
@@ -48,7 +49,11 @@ Rect EncontrarSonrisa( const Mat & frame )
 			}
 		}
 	}
-	return Rect( Point(minX,minY), Point(minX+40,minY+40));
+
+	// Falta incluir un BFS aquí para elegir el rectangulo completo
+	// que conforma la sonirsa
+	
+	return Rect( Point(minX-40,minY-40), Point(minX+40,minY+40));
 }
 
 main(int argc, const char* argv[])
