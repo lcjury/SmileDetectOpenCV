@@ -8,23 +8,35 @@
 #include <string>
 
 using namespace cv;
+using namespace std;
+
+RNG rng(12345);
+
+Mat getSkin( const Mat & input )
+{
+	int Y_MIN = 0, Y_MAX = 255, Cr_MIN = 133, Cr_MAX = 173, Cb_MIN = 77, Cb_MAX = 127;
+	Mat skin;
+	cvtColor(input, skin, CV_BGR2YCrCb);
+	cv::inRange(skin,cv::Scalar(Y_MIN,Cr_MIN,Cb_MIN),cv::Scalar(Y_MAX,Cr_MAX,Cb_MAX),skin);
+	return skin;
+}
 
 // Aplica una mascara al frame utilizando grayFrame como mascara
 // Cualquier pixel "negro" en grayFrame sera transformado en un pixel
 // negro en frame, el resultado se guardara en result
-void applyMask( const Mat & grayFrame, const Mat & frame, Mat & result)
+void applyMask( const Mat & grayFrame, const Mat & frame, Mat & result, int maskVal = 0)
 {
 	result = frame.clone();
 	for( int y  =0; y < grayFrame.rows; y++ )
-	for( int x = 0; x < grayFrame.cols; x++ )
-	{
-		uchar val = grayFrame.at<uchar>( Point(x,y) );
-		if( val != 0 ) continue;
-		
-		result.at<Vec3b>(Point(x,y)).val[0] = 0;
-		result.at<Vec3b>(Point(x,y)).val[1] = 0;
-		result.at<Vec3b>(Point(x,y)).val[2] = 0;
-	}
+		for( int x = 0; x < grayFrame.cols; x++ )
+		{
+			uchar val = grayFrame.at<uchar>( Point(x,y) );
+			if( val != maskVal ) continue;
+
+			result.at<Vec3b>(Point(x,y)).val[0] = 0;
+			result.at<Vec3b>(Point(x,y)).val[1] = 0;
+			result.at<Vec3b>(Point(x,y)).val[2] = 0;
+		}
 
 }
 // Funcion para encontrar la sonrisa dentro de la imagen usando una imagen en escala de grises
@@ -52,14 +64,14 @@ Rect EncontrarSonrisa( const Mat & frame )
 
 	// Falta incluir un BFS aquí para elegir el rectangulo completo
 	// que conforma la sonirsa
-	
+
 	return Rect( Point(minX-40,minY-40), Point(minX+40,minY+40));
 }
 
 main(int argc, const char* argv[])
 {
 
-	Mat frame, grayFrame, result;
+	Mat frame, grayFrame, result, skin;
 	VideoCapture  capture;
 
 	//Se inicia la camara
@@ -73,32 +85,56 @@ main(int argc, const char* argv[])
 	//Crea la ventana
 	cvNamedWindow("Proyecto", CV_WINDOW_AUTOSIZE);
 	cvNamedWindow("Original", CV_WINDOW_AUTOSIZE);
+	cvNamedWindow("Skin", CV_WINDOW_AUTOSIZE);
 	//Captura de la camara
 	while(1 )
 	{
-	capture >> frame ;
-	//Convierte el frame a escala de grises
-	cvtColor(frame, grayFrame, CV_BGR2GRAY);
-	//Histogram Equalization
-	equalizeHist(grayFrame, grayFrame);
+		capture >> frame ;
+		skin = getSkin(frame);
+		//Convierte el frame a escala de grises
+		cvtColor(frame, grayFrame, CV_BGR2GRAY);
+		blur(grayFrame,grayFrame, Size(5,5));
 
-	//Median blur para disminuir el ruido (no nos intresa encontrar un punto, si no una zona)
-	//medianBlur(frame, frame, 5);
-	
-	inRange(grayFrame, Scalar(200), Scalar(255), grayFrame);
-	applyMask(grayFrame, frame, result);
-	cvtColor(result, result, CV_BGR2GRAY);
+		//Canny contours algorithm
+		Mat canny_output;
+		vector<vector<Point> > contours;
+		vector<Vec4i> hierarchy;
 
-	//Para dibujar el rectangulo 
-	Rect rect = EncontrarSonrisa( result );
-	rectangle( frame, rect , cvScalar(0,0,255));
+		//Canny( grayFrame, canny_output, 0,0, 3);		
+		//findContours( canny_output, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0,0) );
+		//Mat drawing = Mat::zeros( canny_output.size(), CV_8UC3);
+		//for( int i = 0; i < contours.size(); i++ )
+		//{
+		//Scalar color = Scalar( rng.uniform(0,255), rng.uniform(0,255), rng.uniform(0,255));
+		//drawContours( grayFrame, contours, 3, color, 3, CV_AA, hierarchy, 0, Point() );
+		//}
+		//
+		//Histogram Equalization
+		equalizeHist(grayFrame, grayFrame);
 
-	//Muestra el frame
-	imshow( "Proyecto", grayFrame);
-	imshow( "Original", frame);
-	imshow("Result", result);
+		//erociona y dilatacion
+		int size = 6;
+		Mat element = getStructuringElement(MORPH_CROSS, Size(2*size+1,2*size+1), Point(size,size) );
+		erode(grayFrame, grayFrame, element );
+		dilate(grayFrame, grayFrame, element );
 
-	cvWaitKey(1);
+		dilate(skin, skin, element);
+
+		inRange(grayFrame, Scalar(200), Scalar(255), grayFrame);
+		applyMask(grayFrame, frame, result);
+		applyMask(skin, result, result, 255);
+		cvtColor(result, result, CV_BGR2GRAY);
+
+		//Para dibujar el rectangulo 
+		Rect rect = EncontrarSonrisa( result );
+		rectangle( frame, rect , cvScalar(0,0,255));
+
+		//Muestra el frame
+		imshow("Proyecto", grayFrame);
+		imshow("Original", frame);
+		imshow("Result", result);
+		imshow("Skin", skin);
+		cvWaitKey(1);
 	}
 	return 0;
 }
