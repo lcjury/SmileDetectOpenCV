@@ -19,9 +19,11 @@ Mat getSkin( const Mat & input )
 	return skin;
 }
 
+
 // Aplica una mascara al frame utilizando grayFrame como mascara
-// Cualquier pixel "negro" en grayFrame sera transformado en un pixel
-// negro en frame, el resultado se guardara en result
+// Cualquier pixel "negro" (o el valor especificado en maskVal)
+// en grayFrame sera transformado en un pixel negro en frame, 
+// el resultado se guardara en result
 void applyMask( const Mat & grayFrame, const Mat & frame, Mat & result, int maskVal = 0)
 {
 	result = frame.clone();
@@ -51,7 +53,7 @@ Rect EncontrarSonrisa( const Mat & frame )
 		{
 			// obtener el pixel
 			uchar pix = frame.at<uchar>( Point(x,y) );
-			if( pix > min && pix >= minPossibleValue )
+			if( pix > min )
 			{
 				minY = y;
 				minX = x;
@@ -82,10 +84,13 @@ void dibujarInterface( Mat & frame )
 main(int argc, const char* argv[])
 {
 
-	Mat frame, grayFrame, result, skin, frame1, frame2, frame3,frame4, frame5;
+	Mat frame, uiframe, grayFrame, result, skin, frame1, frame2, frame3,frame4, frame5;
 	VideoCapture  capture;
+	int lowerBound = 200;
+	int upperBound = 255;
 	
 	//Se inicia la camara
+	
 	capture.open(0);
 	if( !capture.isOpened() )
 	{
@@ -95,15 +100,26 @@ main(int argc, const char* argv[])
 
 	//Crea la ventana
 	cvNamedWindow("Result", CV_WINDOW_AUTOSIZE);
+	cvCreateTrackbar("Rango inferior", "Result", &lowerBound, 255 );
+	cvCreateTrackbar("Rango superior", "Result", &upperBound, 255 );
 
 	//Captura de la camara
 	while(1)
 	{
+		for(int i = 0; i < 5; i++ ) capture >> frame;
 		capture >> frame;
+		uiframe = frame.clone();
+
+		// Dibuja las barras inferiores y superiores
+		dibujarInterface(uiframe);
+		imshow("Result", uiframe );
+		cvWaitKey();
+
+		//Obtiene la mascara de la piel
 		skin = getSkin(frame);
+
 		//Convierte el frame a escala de grises
 		cvtColor(frame, grayFrame, CV_BGR2GRAY);
-
 		//Histogram Equalization
 		equalizeHist(grayFrame, frame1);
 
@@ -115,11 +131,11 @@ main(int argc, const char* argv[])
 		erode(frame2, frame3, element );
 		dilate(frame3, frame4, element );
 
-		inRange(frame4, Scalar(200), Scalar(255), frame5);
+		inRange(frame4, Scalar(lowerBound), Scalar(upperBound), frame5);
 
-		applyMask( frame5, frame, result);
+		applyMask(frame5, frame, result);
 		applyMask(skin, result, result, 255);
-
+		cvtColor( result , result, CV_BGR2GRAY);
 		//Para dibujar el rectangulo 
 		Rect rect = EncontrarSonrisa( result );
 		rectangle( frame, rect , cvScalar(0,0,255));
@@ -129,8 +145,7 @@ main(int argc, const char* argv[])
 
 		//Muestra el frame
 		imshow("Result", frame);
-
-		cvWaitKey(1);
+		cvWaitKey();
 	}
 	return 0;
 }
