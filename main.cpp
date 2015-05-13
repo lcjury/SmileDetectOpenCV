@@ -10,34 +10,6 @@
 using namespace cv;
 using namespace std;
 
-RNG rng(12345);
-
-
-void SimplestCB(Mat& in, Mat& out, float percent) {
-    assert(in.channels() == 3);
-    assert(percent > 0 && percent < 100);
- 
-    float half_percent = percent / 200.0f;
- 
-    vector<Mat> tmpsplit; split(in,tmpsplit);
-    for(int i=0;i<3;i++) {
-	    //find the low and high precentile values (based on the input percentile)
-	    Mat flat; tmpsplit[i].reshape(1,1).copyTo(flat);
-	    cv::sort(flat,flat,CV_SORT_EVERY_ROW + CV_SORT_ASCENDING);
-	    int lowval = flat.at<uchar>(cvFloor(((float)flat.cols) * half_percent));
-	    int highval = flat.at<uchar>(cvCeil(((float)flat.cols) * (1.0 - half_percent)));
-
-	    //saturate below the low percentile and above the high percentile
-	    tmpsplit[i].setTo(lowval,tmpsplit[i] < lowval);
-	    tmpsplit[i].setTo(highval,tmpsplit[i] > highval);
-
-	    //scale the channel
-	    normalize(tmpsplit[i],tmpsplit[i],0,255,NORM_MINMAX);
-    }
-    merge(tmpsplit,out);
-}
-
-
 Mat getSkin( const Mat & input )
 {
 	int Y_MIN = 0, Y_MAX = 255, Cr_MIN = 133, Cr_MAX = 173, Cb_MIN = 77, Cb_MAX = 127;
@@ -87,19 +59,32 @@ Rect EncontrarSonrisa( const Mat & frame )
 			}
 		}
 	}
-
 	// Falta incluir un BFS aquí para elegir el rectangulo completo
 	// que conforma la sonirsa
-
 	return Rect( Point(minX-40,minY-40), Point(minX+40,minY+40));
+}
+
+void dibujarInterface( Mat & frame )
+{
+	int rows = frame.rows / 10; // 10 porciento filas
+	rectangle( frame, Point(0,0), Point(frame.cols, rows), Scalar(0,0,0),CV_FILLED );
+	rectangle( frame, Point(0,frame.rows-rows), Point(frame.cols,frame.rows), Scalar(255,255,255),CV_FILLED );
+	putText( frame, "Imagen con sonrisa", Point(frame.cols/4, frame.rows-rows/2), FONT_HERSHEY_SIMPLEX, 1, Scalar(0,0,0) );
+
+	Mat logo = imread("smile.jpg", CV_LOAD_IMAGE_COLOR);
+	int logoW = rows - rows/4;
+	int logoX = frame.cols - logoW - 4; // end of the frame - logo width - 4 margin
+	int logoY = 4; 
+	resize( logo, logo, Size( logoW, logoW ) ); // resize del logo
+	logo.copyTo( frame.rowRange( logoY, logoY+logoW ).colRange( logoX , logoX+logoW ) );
 }
 
 main(int argc, const char* argv[])
 {
 
-	Mat frame, grayFrame, result, skin;
+	Mat frame, grayFrame, result, skin, frame1, frame2, frame3,frame4, frame5;
 	VideoCapture  capture;
-
+	
 	//Se inicia la camara
 	capture.open(0);
 	if( !capture.isOpened() )
@@ -109,60 +94,42 @@ main(int argc, const char* argv[])
 	}
 
 	//Crea la ventana
-	cvNamedWindow("Proyecto", CV_WINDOW_AUTOSIZE);
-	cvNamedWindow("Original", CV_WINDOW_AUTOSIZE);
-	cvNamedWindow("Skin", CV_WINDOW_AUTOSIZE);
-	//Captura de la camara
-	while(1 )
-	{
-		capture >> frame ;
-		// Algoritmo de balance de colores, no necesariamente funciona ):
-		//SimplestCB(frame,frame,1);
+	cvNamedWindow("Result", CV_WINDOW_AUTOSIZE);
 
+	//Captura de la camara
+	while(1)
+	{
+		capture >> frame;
 		skin = getSkin(frame);
 		//Convierte el frame a escala de grises
 		cvtColor(frame, grayFrame, CV_BGR2GRAY);
-		blur(grayFrame,grayFrame, Size(5,5));
-
-		//Canny contours algorithm
-		Mat canny_output;
-		vector<vector<Point> > contours;
-		vector<Vec4i> hierarchy;
-
-		//Canny( grayFrame, canny_output, 0,0, 3);		
-		//findContours( canny_output, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0,0) );
-		//Mat drawing = Mat::zeros( canny_output.size(), CV_8UC3);
-		//for( int i = 0; i < contours.size(); i++ )
-		//{
-		//Scalar color = Scalar( rng.uniform(0,255), rng.uniform(0,255), rng.uniform(0,255));
-		//drawContours( grayFrame, contours, 3, color, 3, CV_AA, hierarchy, 0, Point() );
-		//}
 
 		//Histogram Equalization
-		equalizeHist(grayFrame, grayFrame);
+		equalizeHist(grayFrame, frame1);
+
+		blur(frame1,frame2, Size(5,5));
 
 		//erociona y dilatacion
 		int size = 6;
 		Mat element = getStructuringElement(MORPH_CROSS, Size(2*size+1,2*size+1), Point(size,size) );
-		erode(grayFrame, grayFrame, element );
-		dilate(grayFrame, grayFrame, element );
+		erode(frame2, frame3, element );
+		dilate(frame3, frame4, element );
 
-		dilate(skin, skin, element);
+		inRange(frame4, Scalar(200), Scalar(255), frame5);
 
-		inRange(grayFrame, Scalar(200), Scalar(255), grayFrame);
-		applyMask(grayFrame, frame, result);
+		applyMask( frame5, frame, result);
 		applyMask(skin, result, result, 255);
-		cvtColor(result, result, CV_BGR2GRAY);
 
 		//Para dibujar el rectangulo 
 		Rect rect = EncontrarSonrisa( result );
 		rectangle( frame, rect , cvScalar(0,0,255));
 
+		// Dibuja las barras inferiores y superiores
+		dibujarInterface(frame);
+
 		//Muestra el frame
-		imshow("Proyecto", grayFrame);
-		imshow("Original", frame);
-		imshow("Result", result);
-		imshow("Skin", skin);
+		imshow("Result", frame);
+
 		cvWaitKey(1);
 	}
 	return 0;
